@@ -586,13 +586,13 @@ if __name__ == "__main__":
             fn=set_example_image, inputs=[example_images], outputs=[img_input]
         )
 
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument(
-        "--port", type=int, default=7860, help="The port number of the server"
-    )
-    argparser.add_argument(
-        "--host", type=str, default="127.0.0.1", help="The host of the server"
-    )
-    args = argparser.parse_args()
+    # argparser = argparse.ArgumentParser()
+    # argparser.add_argument(
+    #     "--port", type=int, default=7860, help="The port number of the server"
+    # )
+    # argparser.add_argument(
+    #     "--host", type=str, default="127.0.0.1", help="The host of the server"
+    # )
+    # args = argparser.parse_args()
 
     demo.launch(server_name=args.host, server_port=args.port)
