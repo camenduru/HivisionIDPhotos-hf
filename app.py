@@ -1,3 +1,4 @@
+import os
 import gradio as gr
 import onnxruntime
 from src.face_judgement_align import IDphotos_create
@@ -7,24 +8,33 @@ import pathlib
 import numpy as np
 from image_utils import resize_image_to_kb
 from data_utils import csv_to_size_list
+import argparse
+
 
 # 获取尺寸列表
-size_list_dict = csv_to_size_list("size_list_CN.csv")
-print(size_list_dict)
+root_dir = os.path.dirname(os.path.abspath(__file__))
+size_list_dict_CN = csv_to_size_list(os.path.join(root_dir, "size_list_CN.csv"))
+size_list_dict_EN = csv_to_size_list(os.path.join(root_dir, "size_list_EN.csv"))
 
-color_list_dict = {
+color_list_dict_CN = {
     "蓝色": (86, 140, 212),
     "白色": (255, 255, 255),
     "红色": (233, 51, 35),
 }
 
+color_list_dict_EN = {
+    "Blue": (86, 140, 212),
+    "White": (255, 255, 255),
+    "Red": (233, 51, 35),
+}
 
-# 设置Gradio examples
+
+# 设置 Gradio examples
 def set_example_image(example: list) -> dict:
     return gr.Image.update(value=example[0])
 
 
-# 检测RGB是否超出范围，如果超出则约束到0～255之间
+# 检测 RGB 是否超出范围，如果超出则约束到 0～255 之间
 def range_check(value, min_value=0, max_value=255):
     value = int(value)
     if value <= min_value:
@@ -47,12 +57,12 @@ def idphoto_inference(
     custom_size_height,
     custom_size_width,
     custom_image_kb,
+    language,
     head_measure_ratio=0.2,
     head_height_ratio=0.45,
     top_distance_max=0.12,
     top_distance_min=0.10,
 ):
-
     idphoto_json = {
         "size_mode": mode_option,
         "color_mode": color_option,
@@ -60,11 +70,45 @@ def idphoto_inference(
         "image_kb_mode": image_kb_options,
     }
 
+    text_lang_map = {
+        "中文": {
+            "Size List": "尺寸列表",
+            "Custom Size": "自定义尺寸",
+            "The width should not be greater than the length; the length and width should not be less than 100, and no more than 1800.": "宽度应不大于长度；长宽不应小于 100，大于 1800",
+            "Custom Color": "自定义底色",
+            "Custom": "自定义",
+            "The number of faces is not equal to 1": "人脸数量不等于 1",
+            "Solid Color": "纯色",
+            "Up-Down Gradient (White)": "上下渐变 (白)",
+            "Center Gradient (White)": "中心渐变 (白)",
+            "Set KB size (Download in the bottom right)": "设置 KB 大小（结果在右边最底的组件下载）",
+            "Not Set": "不设置",
+            "Only Change Background": "只换底",
+        },
+        "English": {
+            "Size List": "Size List",
+            "Custom Size": "Custom Size",
+            "The width should not be greater than the length; the length and width should not be less than 100, and no more than 1800.": "The width should not be greater than the length; the length and width should not be less than 100, and no more than 1800.",
+            "Custom Color": "Custom Color",
+            "Custom": "Custom",
+            "The number of faces is not equal to 1": "The number of faces is not equal to 1",
+            "Solid Color": "Solid Color",
+            "Up-Down Gradient (White)": "Up-Down Gradient (White)",
+            "Center Gradient (White)": "Center Gradient (White)",
+            "Set KB size (Download in the bottom right)": "Set KB size (Download in the bottom right)",
+            "Not Set": "Not Set",
+            "Only Change Background": "Only Change Background",
+        },
+    }
+
     # 如果尺寸模式选择的是尺寸列表
-    if idphoto_json["size_mode"] == "尺寸列表":
-        idphoto_json["size"] = size_list_dict[size_list_option]
+    if idphoto_json["size_mode"] == text_lang_map[language]["Size List"]:
+        if language == "中文":
+            idphoto_json["size"] = size_list_dict_CN[size_list_option]
+        else:
+            idphoto_json["size"] = size_list_dict_EN[size_list_option]
     # 如果尺寸模式选择的是自定义尺寸
-    elif idphoto_json["size_mode"] == "自定义尺寸":
+    elif idphoto_json["size_mode"] == text_lang_map[language]["Custom Size"]:
         id_height = int(custom_size_height)
         id_width = int(custom_size_width)
         if (
@@ -76,7 +120,10 @@ def idphoto_inference(
                 img_output_standard: gr.update(value=None),
                 img_output_standard_hd: gr.update(value=None),
                 notification: gr.update(
-                    value="宽度应不大于长度；长宽不应小于100，大于1800", visible=True
+                    value=text_lang_map[language][
+                        "The width should not be greater than the length; the length and width should not be less than 100, and no more than 1800."
+                    ],
+                    visible=True,
                 ),
             }
         idphoto_json["size"] = (id_height, id_width)
@@ -84,17 +131,20 @@ def idphoto_inference(
         idphoto_json["size"] = (None, None)
 
     # 如果颜色模式选择的是自定义底色
-    if idphoto_json["color_mode"] == "自定义底色":
+    if idphoto_json["color_mode"] == text_lang_map[language]["Custom Color"]:
         idphoto_json["color_bgr"] = (
             range_check(custom_color_R),
             range_check(custom_color_G),
             range_check(custom_color_B),
         )
     else:
-        idphoto_json["color_bgr"] = color_list_dict[color_option]
+        if language == "中文":
+            idphoto_json["color_bgr"] = color_list_dict_CN[color_option]
+        else:
+            idphoto_json["color_bgr"] = color_list_dict_EN[color_option]
 
-    # 如果输出KB大小选择的是自定义
-    if idphoto_json["image_kb_mode"] == "自定义":
+    # 如果输出 KB 大小选择的是自定义
+    if idphoto_json["image_kb_mode"] == text_lang_map[language]["Custom"]:
         idphoto_json["custom_image_kb"] = custom_image_kb
     else:
         idphoto_json["custom_image_kb"] = None
@@ -125,24 +175,30 @@ def idphoto_inference(
         top_distance_min=top_distance_min,
     )
 
-    # 如果检测到人脸数量不等于1
+    # 如果检测到人脸数量不等于 1
     if status == 0:
         result_messgae = {
             img_output_standard: gr.update(value=None),
             img_output_standard_hd: gr.update(value=None),
-            notification: gr.update(value="人脸数量不等于1", visible=True),
+            notification: gr.update(
+                value=text_lang_map[language]["The number of faces is not equal to 1"],
+                visible=True,
+            ),
         }
 
-    # 如果检测到人脸数量等于1
+    # 如果检测到人脸数量等于 1
     else:
-        if idphoto_json["render_mode"] == "纯色":
+        if idphoto_json["render_mode"] == text_lang_map[language]["Solid Color"]:
             result_image_standard = np.uint8(
                 add_background(result_image_standard, bgr=idphoto_json["color_bgr"])
             )
             result_image_hd = np.uint8(
                 add_background(result_image_hd, bgr=idphoto_json["color_bgr"])
             )
-        elif idphoto_json["render_mode"] == "上下渐变(白)":
+        elif (
+            idphoto_json["render_mode"]
+            == text_lang_map[language]["Up-Down Gradient (White)"]
+        ):
             result_image_standard = np.uint8(
                 add_background(
                     result_image_standard,
@@ -173,7 +229,10 @@ def idphoto_inference(
                 )
             )
 
-        if idphoto_json["size_mode"] == "只换底":
+        if (
+            idphoto_json["size_mode"]
+            == text_lang_map[language]["Only Change Background"]
+        ):
             result_layout_image = gr.update(visible=False)
         else:
             typography_arr, typography_rotate = generate_layout_photo(
@@ -189,11 +248,11 @@ def idphoto_inference(
                 width=idphoto_json["size"][1],
             )
 
-        # 如果输出KB大小选择的是自定义
+        # 如果输出 KB 大小选择的是自定义
         if idphoto_json["custom_image_kb"]:
             # 将标准照大小调整至目标大小
-            print("调整kb大小到", idphoto_json["custom_image_kb"], "kb")
-            # 输出路径为一个根据时间戳+哈希值生成的随机文件名
+            print("调整 kb 大小到", idphoto_json["custom_image_kb"], "kb")
+            # 输出路径为一个根据时间戳 + 哈希值生成的随机文件名
             import time
 
             output_image_path = f"./output/{int(time.time())}.jpg"
@@ -226,18 +285,28 @@ def idphoto_inference(
 
 
 if __name__ == "__main__":
-    # 预加载ONNX模型
-    HY_HUMAN_MATTING_WEIGHTS_PATH = "./hivision_modnet.onnx"
+    # 预加载 ONNX 模型
+    HY_HUMAN_MATTING_WEIGHTS_PATH = os.path.join(root_dir, "hivision_modnet.onnx")
     sess = onnxruntime.InferenceSession(HY_HUMAN_MATTING_WEIGHTS_PATH)
 
-    size_mode = ["尺寸列表", "只换底", "自定义尺寸"]
-    size_list = list(size_list_dict.keys())
-    colors = ["蓝色", "白色", "红色", "自定义底色"]
-    render = ["纯色", "上下渐变(白)", "中心渐变(白)"]
-    image_kb = ["不设置", "自定义"]
+    language = ["中文", "English"]
+    size_mode_CN = ["尺寸列表", "只换底", "自定义尺寸"]
+    size_mode_EN = ["Size List", "Only Change Background", "Custom Size"]
+
+    size_list_CN = list(size_list_dict_CN.keys())
+    size_list_EN = list(size_list_dict_EN.keys())
+
+    colors_CN = ["蓝色", "白色", "红色", "自定义底色"]
+    colors_EN = ["Blue", "White", "Red", "Custom Color"]
+
+    render_CN = ["纯色", "上下渐变 (白)", "中心渐变 (白)"]
+    render_EN = ["Solid Color", "Up-Down Gradient (White)", "Center Gradient (White)"]
+
+    image_kb_CN = ["不设置", "自定义"]
+    image_kb_EN = ["Not Set", "Custom"]
 
     title = "<h1 id='title'>HivisionIDPhotos</h1>"
-    description = "<h3>😎9.2更新：新增照片大小KB调整</h3>"
+    description = "<h3>😎9.2 Update: Add photo size KB adjustment</h3>"
     css = """
     h1#title, h3 {
       text-align: center;
@@ -250,21 +319,26 @@ if __name__ == "__main__":
         gr.Markdown(title)
         gr.Markdown(description)
         with gr.Row():
-            # ------------ 左半边UI ----------------
+            # ------------ 左半边 UI ----------------
             with gr.Column():
                 img_input = gr.Image().style(height=350)
+                language_options = gr.Dropdown(
+                    choices=language, label="Language", value="English", elem_id="language"
+                )
+
                 mode_options = gr.Radio(
-                    choices=size_mode,
-                    label="证件照尺寸选项",
-                    value="尺寸列表",
+                    choices=size_mode_EN,
+                    label="ID photo size options",
+                    value="Size List",
                     elem_id="size",
                 )
+
                 # 预设尺寸下拉菜单
                 with gr.Row(visible=True) as size_list_row:
                     size_list_options = gr.Dropdown(
-                        choices=size_list,
-                        label="预设尺寸",
-                        value="一寸",
+                        choices=size_list_EN,
+                        label="Default size",
+                        value="One inch",
                         elem_id="size_list",
                     )
 
@@ -278,10 +352,10 @@ if __name__ == "__main__":
 
                 # 左：背景色选项
                 color_options = gr.Radio(
-                    choices=colors, label="背景色", value="蓝色", elem_id="color"
+                    choices=colors_EN, label="Background color", value="Blue", elem_id="color"
                 )
 
-                # 左：如果选择「自定义底色」，显示RGB输入框
+                # 左：如果选择「自定义底色」，显示 RGB 输入框
                 with gr.Row(visible=False) as custom_color:
                     custom_color_R = gr.Number(value=0, label="R", interactive=True)
                     custom_color_G = gr.Number(value=0, label="G", interactive=True)
@@ -289,64 +363,149 @@ if __name__ == "__main__":
 
                 # 左：渲染方式选项
                 render_options = gr.Radio(
-                    choices=render,
-                    label="渲染方式",
-                    value="纯色",
+                    choices=render_EN,
+                    label="Rendering mode",
+                    value="Solid Color",
                     elem_id="render",
                 )
 
-                # 左：输出KB大小选项
+                # 左：输出 KB 大小选项
                 image_kb_options = gr.Radio(
-                    choices=image_kb,
-                    label="设置KB大小（结果在右边最底的组件下载）",
-                    value="不设置",
+                    choices=image_kb_EN,
+                    label="Set KB size (Download in the bottom right)",
+                    value="Not Set",
                     elem_id="image_kb",
                 )
 
-                # 自定义KB大小, 滑动条，最小10KB，最大200KB
+                # 自定义 KB 大小，滑动条，最小 10KB，最大 200KB
                 with gr.Row(visible=False) as custom_image_kb:
                     custom_image_kb_size = gr.Slider(
                         minimum=10,
                         maximum=1000,
                         value=50,
-                        label="KB大小",
+                        label="KB size",
                         interactive=True,
                     )
 
-                img_but = gr.Button("开始制作")
+                img_but = gr.Button("Start", elem_id="start")
 
                 # 案例图片
                 example_images = gr.Dataset(
                     components=[img_input],
                     samples=[
                         [path.as_posix()]
-                        for path in sorted(pathlib.Path("images").rglob("*.jpg"))
+                        for path in sorted(
+                            pathlib.Path(os.path.join(root_dir, "images")).rglob(
+                                "*.jpg"
+                            )
+                        )
                     ],
                 )
 
-            # ---------------- 右半边UI ----------------
+            # ---------------- 右半边 UI ----------------
             with gr.Column():
-                notification = gr.Text(label="状态", visible=False)
+                notification = gr.Text(label="Status", visible=False)
                 with gr.Row():
-                    img_output_standard = gr.Image(label="标准照").style(height=350)
-                    img_output_standard_hd = gr.Image(label="高清照").style(height=350)
-                img_output_layout = gr.Image(label="六寸排版照").style(height=350)
-                file_download = gr.File(label="下载调整KB大小后的照片", visible=False)
+                    img_output_standard = gr.Image(label="Standard photo").style(height=350)
+                    img_output_standard_hd = gr.Image(label="HD photo").style(height=350)
+                img_output_layout = gr.Image(label="Layout photo").style(height=350)
+                file_download = gr.File(label="Download the photo after adjusting the KB size", visible=False)
 
             # ---------------- 设置隐藏/显示组件 ----------------
+            def change_language(language):
+                # 将Gradio组件中的内容改为中文或英文
+                if language == "中文":
+                    return {
+                        size_list_options: gr.update(
+                            label="预设尺寸",
+                            choices=size_list_CN,
+                            value="一寸",
+                        ),
+                        mode_options: gr.update(
+                            label="证件照尺寸选项",
+                            choices=size_mode_CN,
+                            value="尺寸列表",
+                        ),
+                        color_options: gr.update(
+                            label="背景色",
+                            choices=colors_CN,
+                            value="蓝色",
+                        ),
+                        img_but: gr.update(value="开始制作"),
+                        render_options: gr.update(
+                            label="渲染方式",
+                            choices=render_CN,
+                            value="纯色",
+                        ),
+                        image_kb_options: gr.update(
+                            label="设置 KB 大小（结果在右边最底的组件下载）",
+                            choices=image_kb_CN,
+                            value="不设置",
+                        ),
+                        custom_image_kb_size: gr.update(label="KB 大小"),
+                        notification: gr.update(label="状态"),
+                        img_output_standard: gr.update(label="标准照"),
+                        img_output_standard_hd: gr.update(label="高清照"),
+                        img_output_layout: gr.update(label="六寸排版照"),
+                        file_download: gr.update(label="下载调整 KB 大小后的照片"),
+                    }
+                elif language == "English":
+                    return {
+                        size_list_options: gr.update(
+                            label="Default size",
+                            choices=size_list_EN,
+                            value="One inch",
+                        ),
+                        mode_options: gr.update(
+                            label="ID photo size options",
+                            choices=size_mode_EN,
+                            value="Size List",
+                        ),
+                        color_options: gr.update(
+                            label="Background color",
+                            choices=colors_EN,
+                            value="Blue",
+                        ),
+                        img_but: gr.update(value="Start"),
+                        render_options: gr.update(
+                            label="Rendering mode",
+                            choices=render_EN,
+                            value="Solid Color",
+                        ),
+                        image_kb_options: gr.update(
+                            label="Set KB size (Download in the bottom right)",
+                            choices=image_kb_EN,
+                            value="Not Set",
+                        ),
+                        custom_image_kb_size: gr.update(label="KB size"),
+                        notification: gr.update(label="Status"),
+                        img_output_standard: gr.update(label="Standard photo"),
+                        img_output_standard_hd: gr.update(label="HD photo"),
+                        img_output_layout: gr.update(label="Layout photo"),
+                        file_download: gr.update(
+                            label="Download the photo after adjusting the KB size"
+                        ),
+                    }
+
             def change_color(colors):
-                if colors == "自定义底色":
+                if colors == "自定义底色" or colors == "Custom Color":
                     return {custom_color: gr.update(visible=True)}
                 else:
                     return {custom_color: gr.update(visible=False)}
 
             def change_size_mode(size_option_item):
-                if size_option_item == "自定义尺寸":
+                if (
+                    size_option_item == "自定义尺寸"
+                    or size_option_item == "Custom Size"
+                ):
                     return {
                         custom_size: gr.update(visible=True),
                         size_list_row: gr.update(visible=False),
                     }
-                elif size_option_item == "只换底":
+                elif (
+                    size_option_item == "只换底"
+                    or size_option_item == "Only Change Background"
+                ):
                     return {
                         custom_size: gr.update(visible=False),
                         size_list_row: gr.update(visible=False),
@@ -358,12 +517,31 @@ if __name__ == "__main__":
                     }
 
             def change_image_kb(image_kb_option):
-                if image_kb_option == "自定义":
+                if image_kb_option == "自定义" or image_kb_option == "Custom":
                     return {custom_image_kb: gr.update(visible=True)}
                 else:
                     return {custom_image_kb: gr.update(visible=False)}
 
         # ---------------- 绑定事件 ----------------
+        language_options.input(
+            change_language,
+            inputs=[language_options],
+            outputs=[
+                size_list_options,
+                mode_options,
+                color_options,
+                img_but,
+                render_options,
+                image_kb_options,
+                custom_image_kb_size,
+                notification,
+                img_output_standard,
+                img_output_standard_hd,
+                img_output_layout,
+                file_download,
+            ],
+        )
+
         color_options.input(
             change_color, inputs=[color_options], outputs=[custom_color]
         )
@@ -393,6 +571,7 @@ if __name__ == "__main__":
                 custom_size_height,
                 custom_size_wdith,
                 custom_image_kb_size,
+                language_options,
             ],
             outputs=[
                 img_output_standard,
@@ -407,4 +586,13 @@ if __name__ == "__main__":
             fn=set_example_image, inputs=[example_images], outputs=[img_input]
         )
 
-    demo.launch()
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument(
+        "--port", type=int, default=7860, help="The port number of the server"
+    )
+    argparser.add_argument(
+        "--host", type=str, default="127.0.0.1", help="The host of the server"
+    )
+    args = argparser.parse_args()
+
+    demo.launch(server_name=args.host, server_port=args.port)
